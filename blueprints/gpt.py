@@ -1,33 +1,55 @@
 """
-Family GPT - 가족용 GPT 채팅 서비스
+GPT Chat API Blueprint
+/api/gpt/* 엔드포인트 담당
+
+의존성:
+- db_connection_func: get_db_connection 함수 (set_db_connection으로 주입)
+- openai_client: OpenAI 클라이언트 (set_openai_client으로 주입)
+- use_postgres: PostgreSQL 사용 여부 (set_use_postgres로 주입)
 """
 
 import os
-import sqlite3
-from flask import Flask, request, jsonify, render_template
-from openai import OpenAI
-from dotenv import load_dotenv
+from flask import Blueprint, request, jsonify, render_template
 
-load_dotenv()
+# Blueprint 생성
+gpt_bp = Blueprint('gpt', __name__)
 
-app = Flask(__name__)
+# ===== 의존성 주입 =====
+_db_connection_func = None
+_openai_client = None
+_use_postgres = False
 
-# ===== 설정 =====
-DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-USE_POSTGRES = bool(DATABASE_URL)
 
-# PostgreSQL 사용 시에만 import
-if USE_POSTGRES:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
+def set_db_connection(func):
+    """DB 연결 함수 주입"""
+    global _db_connection_func
+    _db_connection_func = func
 
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# SQLite 경로
-SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'family_gpt.db')
+def set_openai_client(client):
+    """OpenAI 클라이언트 주입"""
+    global _openai_client
+    _openai_client = client
+
+
+def set_use_postgres(value: bool):
+    """PostgreSQL 사용 여부 설정"""
+    global _use_postgres
+    _use_postgres = value
+
+
+def get_db_connection():
+    """DB 연결 함수 호출"""
+    if _db_connection_func is None:
+        raise RuntimeError("DB connection function not set. Call set_db_connection first.")
+    return _db_connection_func()
+
 
 # ===== 상수 =====
+GPT_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'gpt_chat')
+GPT_CONVERSATIONS_FILE = os.path.join(GPT_DATA_DIR, 'conversations.json')
+GPT_USERS_FILE = os.path.join(GPT_DATA_DIR, 'users.json')
+
 DEFAULT_USERS = ["아빠", "엄마", "재하", "하윤"]
 
 USER_PROFILES = {
@@ -91,109 +113,22 @@ USER_PROFILES = {
 }
 
 
-# ===== DB 연결 =====
-def dict_factory(cursor, row):
-    """SQLite dict factory"""
-    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
-
-
-def get_db_connection():
-    """DB 연결 (PostgreSQL 또는 SQLite)"""
-    if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    else:
-        conn = sqlite3.connect(SQLITE_PATH)
-        conn.row_factory = dict_factory
-    return conn
-
-
-def init_db():
-    """DB 테이블 초기화"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        if USE_POSTGRES:
-            # PostgreSQL
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_users (
-                    id SERIAL PRIMARY KEY,
-                    user_id VARCHAR(100) UNIQUE NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_conversations (
-                    id SERIAL PRIMARY KEY,
-                    user_id VARCHAR(100) NOT NULL,
-                    conversation_id VARCHAR(100) NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, conversation_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_messages (
-                    id SERIAL PRIMARY KEY,
-                    user_id VARCHAR(100) NOT NULL,
-                    conversation_id VARCHAR(100) NOT NULL,
-                    role VARCHAR(20) NOT NULL,
-                    content TEXT NOT NULL,
-                    model VARCHAR(50),
-                    has_image BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-        else:
-            # SQLite
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT UNIQUE NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_conversations (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    conversation_id TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, conversation_id)
-                )
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS gpt_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    conversation_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    model TEXT,
-                    has_image INTEGER DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("[DB] 테이블 초기화 완료")
-    except Exception as e:
-        print(f"[DB] 초기화 실패: {e}")
-
-
 # ===== 헬퍼 함수 =====
+
 def get_system_prompt_for_user(user_id: str) -> str:
     """사용자별 맞춤 시스템 프롬프트 반환"""
     if user_id in USER_PROFILES:
         return USER_PROFILES[user_id]["system_prompt"]
-    return "당신은 친절하고 유능한 AI 어시스턴트입니다."
+    return "당신은 친절하고 유능한 AI 어시스턴트입니다. 사용자의 질문에 정확하고 도움이 되는 답변을 제공합니다. 한국어로 대화하며, 필요시 코드나 예시를 포함할 수 있습니다."
+
+
+def ensure_gpt_data_dir():
+    """GPT 데이터 디렉토리 생성"""
+    os.makedirs(GPT_DATA_DIR, exist_ok=True)
 
 
 def load_gpt_users():
-    """사용자 목록 로드"""
+    """사용자 목록 로드 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -203,7 +138,7 @@ def load_gpt_users():
         conn.close()
 
         if rows:
-            return [row['user_id'] for row in rows]
+            return [row['user_id'] if isinstance(row, dict) else row[0] for row in rows]
         else:
             save_gpt_users(DEFAULT_USERS)
             return DEFAULT_USERS.copy()
@@ -213,13 +148,13 @@ def load_gpt_users():
 
 
 def save_gpt_users(users):
-    """사용자 목록 저장"""
+    """사용자 목록 저장 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
         for user_id in users:
-            if USE_POSTGRES:
+            if _use_postgres:
                 cursor.execute(
                     "INSERT INTO gpt_users (user_id) VALUES (%s) ON CONFLICT (user_id) DO NOTHING",
                     (user_id,)
@@ -233,6 +168,7 @@ def save_gpt_users(users):
         conn.commit()
         cursor.close()
         conn.close()
+        print(f"[GPT] 사용자 저장 완료: {users}")
         return True
     except Exception as e:
         print(f"[GPT] 사용자 저장 실패: {e}")
@@ -240,16 +176,19 @@ def save_gpt_users(users):
 
 
 def load_gpt_conversations_for_user(user_id: str):
-    """특정 사용자의 대화 목록 로드"""
+    """특정 사용자의 대화 목록 로드 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
 
         cursor.execute(
-            f"""SELECT conversation_id, created_at, updated_at
+            """SELECT conversation_id, created_at, updated_at
                FROM gpt_conversations
-               WHERE user_id = {ph}
+               WHERE user_id = %s
+               ORDER BY updated_at DESC""" if _use_postgres else
+            """SELECT conversation_id, created_at, updated_at
+               FROM gpt_conversations
+               WHERE user_id = ?
                ORDER BY updated_at DESC""",
             (user_id,)
         )
@@ -257,30 +196,36 @@ def load_gpt_conversations_for_user(user_id: str):
 
         result = {}
         for conv in convs:
-            conv_id = conv['conversation_id']
+            conv_id = conv['conversation_id'] if isinstance(conv, dict) else conv[0]
 
             cursor.execute(
-                f"""SELECT role, content, model, has_image, created_at
+                """SELECT role, content, model, has_image, created_at
                    FROM gpt_messages
-                   WHERE user_id = {ph} AND conversation_id = {ph}
+                   WHERE user_id = %s AND conversation_id = %s
+                   ORDER BY created_at""" if _use_postgres else
+                """SELECT role, content, model, has_image, created_at
+                   FROM gpt_messages
+                   WHERE user_id = ? AND conversation_id = ?
                    ORDER BY created_at""",
                 (user_id, conv_id)
             )
             messages = cursor.fetchall()
 
-            created_at = conv['created_at']
-            updated_at = conv['updated_at']
+            created_at = conv['created_at'] if isinstance(conv, dict) else conv[1]
+            updated_at = conv['updated_at'] if isinstance(conv, dict) else conv[2]
 
             result[conv_id] = {
-                'created_at': created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at) if created_at else None,
-                'updated_at': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at) if updated_at else None,
+                'created_at': created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at),
+                'updated_at': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at),
                 'messages': [
                     {
-                        'role': msg['role'],
-                        'content': msg['content'],
-                        'model': msg['model'],
-                        'has_image': bool(msg['has_image']),
-                        'timestamp': msg['created_at'].isoformat() if hasattr(msg['created_at'], 'isoformat') else str(msg['created_at']) if msg['created_at'] else None
+                        'role': msg['role'] if isinstance(msg, dict) else msg[0],
+                        'content': msg['content'] if isinstance(msg, dict) else msg[1],
+                        'model': msg['model'] if isinstance(msg, dict) else msg[2],
+                        'has_image': bool(msg['has_image'] if isinstance(msg, dict) else msg[3]),
+                        'timestamp': (msg['created_at'] if isinstance(msg, dict) else msg[4]).isoformat()
+                            if hasattr(msg['created_at'] if isinstance(msg, dict) else msg[4], 'isoformat')
+                            else str(msg['created_at'] if isinstance(msg, dict) else msg[4])
                     }
                     for msg in messages
                 ]
@@ -291,16 +236,18 @@ def load_gpt_conversations_for_user(user_id: str):
         return result
     except Exception as e:
         print(f"[GPT] 대화 로드 실패: {e}")
+        import traceback
+        traceback.print_exc()
         return {}
 
 
 def save_gpt_message(user_id: str, conversation_id: str, role: str, content: str, model: str = None, has_image: bool = False):
-    """메시지 저장"""
+    """단일 메시지 저장 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        if USE_POSTGRES:
+        if _use_postgres:
             cursor.execute(
                 """INSERT INTO gpt_conversations (user_id, conversation_id)
                    VALUES (%s, %s)
@@ -331,24 +278,35 @@ def save_gpt_message(user_id: str, conversation_id: str, role: str, content: str
         return True
     except Exception as e:
         print(f"[GPT] 메시지 저장 실패: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
 def delete_gpt_conversation(user_id: str, conversation_id: str):
-    """대화 삭제"""
+    """대화 삭제 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
 
-        cursor.execute(
-            f"DELETE FROM gpt_messages WHERE user_id = {ph} AND conversation_id = {ph}",
-            (user_id, conversation_id)
-        )
-        cursor.execute(
-            f"DELETE FROM gpt_conversations WHERE user_id = {ph} AND conversation_id = {ph}",
-            (user_id, conversation_id)
-        )
+        if _use_postgres:
+            cursor.execute(
+                "DELETE FROM gpt_messages WHERE user_id = %s AND conversation_id = %s",
+                (user_id, conversation_id)
+            )
+            cursor.execute(
+                "DELETE FROM gpt_conversations WHERE user_id = %s AND conversation_id = %s",
+                (user_id, conversation_id)
+            )
+        else:
+            cursor.execute(
+                "DELETE FROM gpt_messages WHERE user_id = ? AND conversation_id = ?",
+                (user_id, conversation_id)
+            )
+            cursor.execute(
+                "DELETE FROM gpt_conversations WHERE user_id = ? AND conversation_id = ?",
+                (user_id, conversation_id)
+            )
 
         conn.commit()
         cursor.close()
@@ -360,15 +318,19 @@ def delete_gpt_conversation(user_id: str, conversation_id: str):
 
 
 def delete_gpt_user(user_id: str):
-    """사용자 삭제"""
+    """사용자 삭제 (PostgreSQL)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        ph = "%s" if USE_POSTGRES else "?"
 
-        cursor.execute(f"DELETE FROM gpt_messages WHERE user_id = {ph}", (user_id,))
-        cursor.execute(f"DELETE FROM gpt_conversations WHERE user_id = {ph}", (user_id,))
-        cursor.execute(f"DELETE FROM gpt_users WHERE user_id = {ph}", (user_id,))
+        if _use_postgres:
+            cursor.execute("DELETE FROM gpt_messages WHERE user_id = %s", (user_id,))
+            cursor.execute("DELETE FROM gpt_conversations WHERE user_id = %s", (user_id,))
+            cursor.execute("DELETE FROM gpt_users WHERE user_id = %s", (user_id,))
+        else:
+            cursor.execute("DELETE FROM gpt_messages WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM gpt_conversations WHERE user_id = ?", (user_id,))
+            cursor.execute("DELETE FROM gpt_users WHERE user_id = ?", (user_id,))
 
         conn.commit()
         cursor.close()
@@ -380,7 +342,13 @@ def delete_gpt_user(user_id: str):
 
 
 def analyze_question_complexity(message: str, has_image: bool = False) -> str:
-    """질문 복잡도 분석하여 적절한 모델 선택"""
+    """질문 복잡도 분석하여 적절한 모델 선택
+
+    Returns:
+        'gpt-5.2' for complex questions
+        'gpt-4o' for medium questions
+        'gpt-4o-mini' for simple questions
+    """
     if has_image:
         return 'gpt-4o'
 
@@ -435,22 +403,16 @@ def analyze_question_complexity(message: str, has_image: bool = False) -> str:
 
 
 # ===== 라우트 =====
-@app.route('/')
-@app.route('/gpt-chat')
+
+@gpt_bp.route('/gpt-chat')
 def gpt_chat_page():
-    """GPT Chat 페이지"""
+    """GPT Chat 페이지 렌더링"""
     return render_template('gpt-chat.html')
 
 
-@app.route('/health')
-def health():
-    """헬스체크"""
-    return jsonify({"ok": True, "service": "family-gpt"})
-
-
-@app.route('/api/gpt/chat', methods=['POST'])
+@gpt_bp.route('/api/gpt/chat', methods=['POST'])
 def api_gpt_chat():
-    """GPT Chat API"""
+    """GPT Chat API - 질문 복잡도에 따른 자동 모델 라우팅"""
     try:
         data = request.get_json() or {}
         message = data.get('message', '').strip()
@@ -469,9 +431,10 @@ def api_gpt_chat():
         else:
             selected_model = model_preference
 
-        print(f"[GPT] 모델: {selected_model}, 사용자: {user_id}")
+        print(f"[GPT] 모델 선택: {selected_model} (preference: {model_preference}, user: {user_id}, has_image: {bool(image_base64)})")
 
         system_prompt = get_system_prompt_for_user(user_id)
+
         messages = [{"role": "system", "content": system_prompt}]
 
         for h in history[-10:]:
@@ -480,10 +443,10 @@ def api_gpt_chat():
                 "content": h.get('content', '')
             })
 
-        if not openai_client:
-            return jsonify({"ok": False, "error": "OpenAI API 키가 설정되지 않았습니다"})
+        client = _openai_client
+        if client is None:
+            return jsonify({"ok": False, "error": "OpenAI client not configured"})
 
-        # 이미지 포함 요청 (gpt-4o)
         if image_base64 and selected_model == 'gpt-4o':
             user_content = [{"type": "text", "text": message or "이 이미지에 대해 설명해주세요."}]
 
@@ -494,7 +457,7 @@ def api_gpt_chat():
 
             messages.append({"role": "user", "content": user_content})
 
-            response = openai_client.chat.completions.create(
+            response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=messages,
                 temperature=0.7,
@@ -503,7 +466,6 @@ def api_gpt_chat():
             assistant_response = response.choices[0].message.content
             model_used = "gpt-4o"
 
-        # GPT-5.2 (responses API)
         elif selected_model == 'gpt-5.2':
             messages.append({"role": "user", "content": message})
 
@@ -514,7 +476,7 @@ def api_gpt_chat():
                     "content": [{"type": "input_text", "text": msg["content"]}]
                 })
 
-            response = openai_client.responses.create(
+            response = client.responses.create(
                 model="gpt-5.2",
                 input=input_messages,
                 temperature=0.7
@@ -532,12 +494,11 @@ def api_gpt_chat():
 
             model_used = "gpt-5.2"
 
-        # GPT-4o / GPT-4o-mini
         else:
             messages.append({"role": "user", "content": message})
             max_tokens = 2000 if selected_model == 'gpt-4o-mini' else 4000
 
-            response = openai_client.chat.completions.create(
+            response = client.chat.completions.create(
                 model=selected_model,
                 messages=messages,
                 temperature=0.7,
@@ -546,7 +507,6 @@ def api_gpt_chat():
             assistant_response = response.choices[0].message.content
             model_used = selected_model
 
-        # 대화 저장
         if conversation_id:
             try:
                 save_gpt_message(user_id, conversation_id, 'user', message, None, bool(image_base64))
@@ -557,7 +517,8 @@ def api_gpt_chat():
         return jsonify({
             "ok": True,
             "response": assistant_response,
-            "model_used": model_used
+            "model_used": model_used,
+            "complexity": "complex" if model_used == "gpt-5.2" else "simple"
         })
 
     except Exception as e:
@@ -566,9 +527,9 @@ def api_gpt_chat():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/conversations', methods=['GET'])
+@gpt_bp.route('/api/gpt/conversations', methods=['GET'])
 def api_gpt_get_conversations():
-    """대화 목록 조회"""
+    """사용자별 대화 목록 조회"""
     try:
         user_id = request.args.get('user_id', 'default')
         user_convs = load_gpt_conversations_for_user(user_id)
@@ -596,7 +557,7 @@ def api_gpt_get_conversations():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/conversations/<conversation_id>', methods=['GET'])
+@gpt_bp.route('/api/gpt/conversations/<conversation_id>', methods=['GET'])
 def api_gpt_get_conversation(conversation_id):
     """특정 대화 조회"""
     try:
@@ -621,7 +582,7 @@ def api_gpt_get_conversation(conversation_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/conversations/<conversation_id>', methods=['DELETE'])
+@gpt_bp.route('/api/gpt/conversations/<conversation_id>', methods=['DELETE'])
 def api_gpt_delete_conversation(conversation_id):
     """대화 삭제"""
     try:
@@ -635,9 +596,9 @@ def api_gpt_delete_conversation(conversation_id):
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/users', methods=['GET'])
+@gpt_bp.route('/api/gpt/users', methods=['GET'])
 def api_gpt_get_users():
-    """사용자 목록 조회"""
+    """등록된 사용자 목록 조회"""
     try:
         users = load_gpt_users()
 
@@ -657,7 +618,7 @@ def api_gpt_get_users():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/users', methods=['POST'])
+@gpt_bp.route('/api/gpt/users', methods=['POST'])
 def api_gpt_add_user():
     """사용자 추가"""
     try:
@@ -681,7 +642,7 @@ def api_gpt_add_user():
         return jsonify({"ok": False, "error": str(e)})
 
 
-@app.route('/api/gpt/users/<user_id>', methods=['DELETE'])
+@gpt_bp.route('/api/gpt/users/<user_id>', methods=['DELETE'])
 def api_gpt_delete_user(user_id):
     """사용자 삭제"""
     try:
@@ -696,10 +657,3 @@ def api_gpt_delete_user(user_id):
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
-
-
-# ===== 앱 실행 =====
-if __name__ == '__main__':
-    init_db()
-    port = int(os.getenv('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
