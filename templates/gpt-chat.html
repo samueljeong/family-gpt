@@ -1,0 +1,1666 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>GPT Chat</title>
+  <style>
+    :root {
+      --bg-main: #f5f5f7;
+      --bg-sidebar: rgba(255, 255, 255, 0.72);
+      --bg-card: rgba(255, 255, 255, 0.8);
+      --bg-input: rgba(255, 255, 255, 0.9);
+      --bg-user-bubble: #007aff;
+      --bg-assistant-bubble: #e9e9eb;
+      --text-primary: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --text-muted: #86868b;
+      --text-user: #ffffff;
+      --border: rgba(0, 0, 0, 0.06);
+      --border-strong: rgba(0, 0, 0, 0.1);
+      --accent: #007aff;
+      --accent-hover: #0056b3;
+      --green: #34c759;
+      --purple: #af52de;
+      --danger: #ff3b30;
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+      --blur: blur(20px);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Noto Sans KR', sans-serif;
+      background: var(--bg-main);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Layout */
+    .app-container {
+      display: flex;
+      height: 100%;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 280px;
+      background: var(--bg-sidebar);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+    }
+
+    .sidebar-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .new-chat-btn {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--accent);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .new-chat-btn:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .new-chat-btn:active {
+      transform: translateY(0);
+    }
+
+    /* User Selector */
+    .user-selector {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .user-selector label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .user-select-wrapper {
+      display: flex;
+      gap: 8px;
+    }
+
+    .user-select {
+      flex: 1;
+      padding: 10px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 15px;
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2386868b' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+    }
+
+    .add-user-btn {
+      padding: 10px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      color: var(--text-primary);
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 300;
+      transition: all 0.2s;
+    }
+
+    .add-user-btn:hover {
+      background: var(--border-strong);
+    }
+
+    .chat-history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+
+    .chat-history-item {
+      padding: 12px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: all 0.2s;
+    }
+
+    .chat-history-item:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .chat-history-item.active {
+      background: rgba(0, 122, 255, 0.1);
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    .chat-history-item .delete-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .chat-history-item .delete-btn:hover {
+      opacity: 1;
+    }
+
+    .chat-history-item:hover .delete-btn {
+      display: block;
+    }
+
+    /* Main Chat Area */
+    .main-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      background: linear-gradient(180deg, #ffffff 0%, var(--bg-main) 100%);
+    }
+
+    /* Header */
+    .chat-header {
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-sidebar);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .model-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .model-dropdown {
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: 20px;
+      padding: 8px 16px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .model-dropdown:hover {
+      box-shadow: var(--shadow-md);
+    }
+
+    .model-badge {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .model-badge.gpt5 {
+      background: linear-gradient(135deg, var(--purple), #bf5af2);
+      color: white;
+    }
+
+    .model-badge.gpt4 {
+      background: linear-gradient(135deg, var(--green), #30d158);
+      color: white;
+    }
+
+    .model-badge.mini {
+      background: var(--text-muted);
+      color: white;
+    }
+
+    .model-badge.auto {
+      background: linear-gradient(135deg, var(--accent), #5ac8fa);
+      color: white;
+    }
+
+    /* Model Selector Popup */
+    .model-popup {
+      position: absolute;
+      top: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--bg-sidebar);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 8px;
+      min-width: 320px;
+      z-index: 100;
+      display: none;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .model-popup.show {
+      display: block;
+      animation: fadeIn 0.2s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+      to { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    .model-option {
+      padding: 14px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      transition: background 0.15s;
+    }
+
+    .model-option:hover {
+      background: rgba(0, 0, 0, 0.04);
+    }
+
+    .model-option.selected {
+      background: rgba(0, 122, 255, 0.08);
+    }
+
+    .model-option-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .model-option-info {
+      flex: 1;
+    }
+
+    .model-option-name {
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 2px;
+      color: var(--text-primary);
+    }
+
+    .model-option-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .model-option-check {
+      color: var(--accent);
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    /* Menu Button (Mobile) */
+    .menu-btn {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 8px 12px;
+      transition: all 0.2s;
+    }
+
+    .menu-btn:hover {
+      background: var(--border-strong);
+    }
+
+    /* Messages Container */
+    .messages-container {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .messages-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px 0;
+    }
+
+    .message {
+      padding: 8px 24px;
+      display: flex;
+      max-width: 900px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .message.user {
+      justify-content: flex-end;
+    }
+
+    .message.assistant {
+      justify-content: flex-start;
+    }
+
+    .message-bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 20px;
+      line-height: 1.5;
+      font-size: 15px;
+      position: relative;
+    }
+
+    .message.user .message-bubble {
+      background: var(--bg-user-bubble);
+      color: var(--text-user);
+      border-bottom-right-radius: 6px;
+    }
+
+    .message.assistant .message-bubble {
+      background: var(--bg-assistant-bubble);
+      color: var(--text-primary);
+      border-bottom-left-radius: 6px;
+    }
+
+    .message-bubble p {
+      margin-bottom: 8px;
+    }
+
+    .message-bubble p:last-child {
+      margin-bottom: 0;
+    }
+
+    .message-bubble pre {
+      background: rgba(0, 0, 0, 0.06);
+      border-radius: 12px;
+      padding: 12px;
+      overflow-x: auto;
+      margin: 8px 0;
+      font-family: 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .message.user .message-bubble pre {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .message-bubble code {
+      background: rgba(0, 0, 0, 0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-family: 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .message.user .message-bubble code {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .message-bubble pre code {
+      background: none;
+      padding: 0;
+    }
+
+    .message-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .message.user .message-meta {
+      justify-content: flex-end;
+      color: rgba(255, 255, 255, 0.7);
+    }
+
+    /* Welcome Screen */
+    .welcome-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .welcome-logo {
+      width: 80px;
+      height: 80px;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 40px;
+      margin-bottom: 28px;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .welcome-title {
+      font-size: 32px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, var(--text-primary), var(--text-secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .welcome-subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+      margin-bottom: 40px;
+      line-height: 1.5;
+    }
+
+    .welcome-user {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .welcome-examples {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      max-width: 560px;
+      width: 100%;
+    }
+
+    .example-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .example-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--accent);
+    }
+
+    .example-title {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: var(--text-primary);
+    }
+
+    .example-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Input Area */
+    .input-area {
+      padding: 16px 24px 24px;
+      background: linear-gradient(0deg, var(--bg-main) 0%, transparent 100%);
+    }
+
+    .input-container {
+      max-width: 900px;
+      margin: 0 auto;
+      position: relative;
+    }
+
+    /* Image Preview */
+    .image-preview {
+      display: none;
+      margin-bottom: 12px;
+      position: relative;
+      width: fit-content;
+    }
+
+    .image-preview.show {
+      display: block;
+    }
+
+    .image-preview img {
+      max-width: 120px;
+      max-height: 120px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .image-preview .remove-btn {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      width: 24px;
+      height: 24px;
+      background: var(--danger);
+      border: 2px solid white;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow-sm);
+      transition: transform 0.2s;
+    }
+
+    .image-preview .remove-btn:hover {
+      transform: scale(1.1);
+    }
+
+    /* Voice Status Indicator */
+    .voice-status {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: rgba(255, 59, 48, 0.1);
+      border-radius: 20px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--danger);
+      font-weight: 500;
+    }
+
+    .voice-status.show {
+      display: flex;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .voice-status .pulse-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--danger);
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    .input-wrapper {
+      background: var(--bg-input);
+      border: 1px solid var(--border-strong);
+      border-radius: 24px;
+      display: flex;
+      align-items: flex-end;
+      padding: 8px 8px 8px 18px;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-sm);
+      gap: 8px;
+    }
+
+    .input-wrapper:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+    }
+
+    .input-actions {
+      display: flex;
+      gap: 2px;
+      padding-bottom: 6px;
+    }
+
+    .action-btn {
+      width: 36px;
+      height: 36px;
+      background: transparent;
+      border: none;
+      border-radius: 50%;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.2s;
+    }
+
+    .action-btn:hover {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text-primary);
+    }
+
+    .action-btn.recording {
+      background: var(--danger);
+      color: white;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.8; transform: scale(1.05); }
+    }
+
+    .input-wrapper textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-size: 16px;
+      line-height: 1.5;
+      resize: none;
+      max-height: 150px;
+      min-height: 24px;
+      outline: none;
+      font-family: inherit;
+      padding: 6px 0;
+    }
+
+    .input-wrapper textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    .send-btn {
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .send-btn:disabled {
+      background: var(--text-muted);
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .send-btn:hover:not(:disabled) {
+      background: var(--accent-hover);
+      transform: scale(1.05);
+    }
+
+    .input-info {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 10px;
+    }
+
+    /* Hidden file inputs */
+    .hidden-input {
+      display: none;
+    }
+
+    /* Loading Animation */
+    .typing-indicator {
+      display: flex;
+      gap: 5px;
+      padding: 8px 0;
+    }
+
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      animation: typing 1.4s infinite ease-in-out;
+    }
+
+    .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+
+    @keyframes typing {
+      0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .modal {
+      background: var(--bg-sidebar);
+      backdrop-filter: var(--blur);
+      -webkit-backdrop-filter: var(--blur);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+      max-width: 380px;
+      width: 90%;
+      box-shadow: var(--shadow-lg);
+    }
+
+    .modal h3 {
+      margin-bottom: 20px;
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .modal input {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--bg-input);
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 16px;
+      margin-bottom: 20px;
+      transition: all 0.2s;
+    }
+
+    .modal input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.1);
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+
+    .modal-btn {
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .modal-btn.cancel {
+      background: rgba(0, 0, 0, 0.05);
+      color: var(--text-primary);
+    }
+
+    .modal-btn.cancel:hover {
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    .modal-btn.confirm {
+      background: var(--accent);
+      color: white;
+    }
+
+    .modal-btn.confirm:hover {
+      background: var(--accent-hover);
+    }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: -280px;
+        top: 0;
+        bottom: 0;
+        z-index: 200;
+        transition: left 0.3s ease;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+
+      .sidebar-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.3);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        z-index: 150;
+      }
+
+      .sidebar-overlay.show {
+        display: block;
+      }
+
+      .menu-btn {
+        display: flex;
+      }
+
+      .message {
+        padding: 6px 16px;
+      }
+
+      .message-bubble {
+        max-width: 85%;
+      }
+
+      .welcome-title {
+        font-size: 26px;
+      }
+
+      .welcome-examples {
+        grid-template-columns: 1fr;
+      }
+
+      .input-area {
+        padding: 12px 16px 20px;
+      }
+
+      .model-popup {
+        left: 16px;
+        right: 16px;
+        transform: none;
+        min-width: auto;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(0, 0, 0, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Overlay (Mobile) -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <button class="new-chat-btn" onclick="newChat()">
+          <span>+</span>
+          <span>새 대화</span>
+        </button>
+      </div>
+
+      <!-- User Selector -->
+      <div class="user-selector">
+        <label>사용자 선택</label>
+        <div class="user-select-wrapper">
+          <select class="user-select" id="userSelect" onchange="switchUser()">
+            <option value="default">기본 사용자</option>
+          </select>
+          <button class="add-user-btn" onclick="showAddUserModal()">+</button>
+        </div>
+      </div>
+
+      <div class="chat-history" id="chatHistory">
+        <!-- Chat history items will be inserted here -->
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Header -->
+      <header class="chat-header">
+        <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+        <div class="model-selector">
+          <button class="model-dropdown" id="modelDropdown" onclick="toggleModelPopup()">
+            <span class="model-badge auto" id="currentModelBadge">AUTO</span>
+            <span id="currentModelName">자동 선택</span>
+            <span style="font-size: 10px; opacity: 0.6;">▼</span>
+          </button>
+        </div>
+        <div style="width: 48px;"></div>
+      </header>
+
+      <!-- Model Popup -->
+      <div class="model-popup" id="modelPopup">
+        <div class="model-option selected" data-model="auto" onclick="selectModel('auto')">
+          <div class="model-option-icon" style="background: linear-gradient(135deg, #007aff, #5ac8fa);">⚡</div>
+          <div class="model-option-info">
+            <div class="model-option-name">자동 선택</div>
+            <div class="model-option-desc">질문에 따라 최적 모델 자동 선택</div>
+          </div>
+          <span class="model-option-check" id="check-auto">✓</span>
+        </div>
+        <div class="model-option" data-model="gpt-5.2" onclick="selectModel('gpt-5.2')">
+          <div class="model-option-icon" style="background: linear-gradient(135deg, #af52de, #bf5af2);">🧠</div>
+          <div class="model-option-info">
+            <div class="model-option-name">GPT-5.2</div>
+            <div class="model-option-desc">복잡한 분석, 코딩, 창작</div>
+          </div>
+          <span class="model-option-check" id="check-gpt-5.2" style="display:none;">✓</span>
+        </div>
+        <div class="model-option" data-model="gpt-4o" onclick="selectModel('gpt-4o')">
+          <div class="model-option-icon" style="background: linear-gradient(135deg, #34c759, #30d158);">💬</div>
+          <div class="model-option-info">
+            <div class="model-option-name">GPT-4o</div>
+            <div class="model-option-desc">이미지 분석, 번역, 설명</div>
+          </div>
+          <span class="model-option-check" id="check-gpt-4o" style="display:none;">✓</span>
+        </div>
+        <div class="model-option" data-model="gpt-4o-mini" onclick="selectModel('gpt-4o-mini')">
+          <div class="model-option-icon" style="background: #86868b;">⚡</div>
+          <div class="model-option-info">
+            <div class="model-option-name">GPT-4o-mini</div>
+            <div class="model-option-desc">간단한 질문에 초고속 응답</div>
+          </div>
+          <span class="model-option-check" id="check-gpt-4o-mini" style="display:none;">✓</span>
+        </div>
+      </div>
+
+      <!-- Messages Area -->
+      <div class="messages-container" id="messagesContainer">
+        <!-- Welcome Screen -->
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-logo">✨</div>
+          <h1 class="welcome-title">무엇을 도와드릴까요?</h1>
+          <p class="welcome-subtitle">
+            <span class="welcome-user" id="welcomeUser">사용자</span>님, 안녕하세요!<br>
+            무엇이든 물어보세요
+          </p>
+          <div class="welcome-examples">
+            <div class="example-card" onclick="setExample('Python으로 간단한 웹 스크래퍼 만들어줘')">
+              <div class="example-title">💻 코드 작성</div>
+              <div class="example-desc">Python 웹 스크래퍼</div>
+            </div>
+            <div class="example-card" onclick="setExample('마케팅에서 AIDA 모델이 뭐야?')">
+              <div class="example-title">📚 개념 설명</div>
+              <div class="example-desc">마케팅 AIDA 모델</div>
+            </div>
+            <div class="example-card" onclick="setExample('오늘 날씨가 정말 좋네요 영어로 번역해줘')">
+              <div class="example-title">🌐 번역</div>
+              <div class="example-desc">한영 번역</div>
+            </div>
+            <div class="example-card" onclick="setExample('AI가 미래 일자리에 미치는 영향 분석해줘')">
+              <div class="example-title">🔍 심층 분석</div>
+              <div class="example-desc">AI와 일자리</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Messages will be inserted here -->
+        <div class="messages-scroll" id="messagesScroll" style="display: none;"></div>
+      </div>
+
+      <!-- Input Area -->
+      <div class="input-area">
+        <div class="input-container">
+          <!-- Image Preview -->
+          <div class="image-preview" id="imagePreview">
+            <img id="previewImg" src="" alt="Preview">
+            <button class="remove-btn" onclick="removeImage()">✕</button>
+          </div>
+
+          <!-- Voice Status -->
+          <div class="voice-status" id="voiceStatus">
+            <span class="pulse-dot"></span>
+            <span>듣는 중...</span>
+          </div>
+
+          <div class="input-wrapper">
+            <div class="input-actions">
+              <!-- Image Upload -->
+              <button class="action-btn" onclick="document.getElementById('imageInput').click()" title="이미지 첨부">
+                📎
+              </button>
+              <!-- Camera -->
+              <button class="action-btn" onclick="document.getElementById('cameraInput').click()" title="카메라">
+                📷
+              </button>
+              <!-- Voice -->
+              <button class="action-btn" id="voiceBtn" onclick="toggleVoiceRecording()" title="음성 입력">
+                🎤
+              </button>
+            </div>
+            <textarea
+              id="messageInput"
+              placeholder="메시지를 입력하세요..."
+              rows="1"
+              onkeydown="handleKeyDown(event)"
+              oninput="autoResize(this)"
+            ></textarea>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()" disabled>
+              ↑
+            </button>
+          </div>
+          <div class="input-info">
+            AI는 실수할 수 있습니다. 중요한 정보는 확인하세요.
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden Inputs -->
+      <input type="file" id="imageInput" class="hidden-input" accept="image/*" onchange="handleImageSelect(event)">
+      <input type="file" id="cameraInput" class="hidden-input" accept="image/*" capture="environment" onchange="handleImageSelect(event)">
+    </main>
+  </div>
+
+  <!-- Add User Modal -->
+  <div class="modal-overlay" id="addUserModal">
+    <div class="modal">
+      <h3>새 사용자 추가</h3>
+      <input type="text" id="newUserName" placeholder="사용자 이름">
+      <div class="modal-buttons">
+        <button class="modal-btn cancel" onclick="hideAddUserModal()">취소</button>
+        <button class="modal-btn confirm" onclick="addUser()">추가</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let currentModel = 'auto';
+    let messages = [];
+    let isLoading = false;
+    let currentConversationId = null;
+    let currentUserId = localStorage.getItem('gpt-current-user') || '';
+    let users = [];
+    let currentImage = null;
+
+    // Speech Recognition
+    let recognition = null;
+    let isRecording = false;
+    let finalTranscript = '';
+
+    // Initialize Speech Recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = 'ko-KR';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+
+        // 최종 결과와 중간 결과를 분리하여 처리
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript = transcript;
+          }
+        }
+
+        // 최종 결과 + 현재 중간 결과를 표시
+        const input = document.getElementById('messageInput');
+        input.value = finalTranscript + interimTranscript;
+        autoResize(input);
+      };
+
+      recognition.onend = () => {
+        // 녹음이 끝나면 최종 결과만 유지
+        const input = document.getElementById('messageInput');
+        input.value = finalTranscript;
+        autoResize(input);
+
+        isRecording = false;
+        finalTranscript = '';
+        document.getElementById('voiceBtn').classList.remove('recording');
+        document.getElementById('voiceStatus').classList.remove('show');
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+
+        // 에러 발생 시 기존 입력은 유지
+        const input = document.getElementById('messageInput');
+        input.value = finalTranscript;
+        autoResize(input);
+
+        isRecording = false;
+        finalTranscript = '';
+        document.getElementById('voiceBtn').classList.remove('recording');
+        document.getElementById('voiceStatus').classList.remove('show');
+      };
+    }
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', async () => {
+      await loadUsers();
+      await loadConversations();
+      document.getElementById('messageInput').focus();
+    });
+
+    // User Management - Load from server
+    async function loadUsers() {
+      try {
+        const response = await fetch('/api/gpt/users');
+        const data = await response.json();
+
+        if (data.ok && data.users) {
+          users = data.users.map(u => u.id);
+
+          // 현재 사용자가 없거나 목록에 없으면 첫 번째 사용자로 설정
+          if (!currentUserId || !users.includes(currentUserId)) {
+            currentUserId = users[0] || '아빠';
+            localStorage.setItem('gpt-current-user', currentUserId);
+          }
+
+          renderUsers();
+        }
+      } catch (err) {
+        console.error('Failed to load users:', err);
+        // 기본 사용자 설정
+        users = ['아빠', '엄마', '재하', '하윤'];
+        if (!currentUserId) currentUserId = users[0];
+        renderUsers();
+      }
+    }
+
+    function renderUsers() {
+      const select = document.getElementById('userSelect');
+      select.innerHTML = '';
+
+      users.forEach(user => {
+        const option = document.createElement('option');
+        option.value = user;
+        option.textContent = user;
+        if (user === currentUserId) option.selected = true;
+        select.appendChild(option);
+      });
+
+      // Update welcome message
+      const welcomeUser = document.getElementById('welcomeUser');
+      welcomeUser.textContent = currentUserId || '사용자';
+    }
+
+    function switchUser() {
+      currentUserId = document.getElementById('userSelect').value;
+      localStorage.setItem('gpt-current-user', currentUserId);
+
+      // Reset current conversation
+      currentConversationId = null;
+      messages = [];
+
+      document.getElementById('welcomeScreen').style.display = 'flex';
+      document.getElementById('messagesScroll').style.display = 'none';
+      document.getElementById('messagesScroll').innerHTML = '';
+
+      renderUsers();
+      loadConversations();
+    }
+
+    function showAddUserModal() {
+      document.getElementById('addUserModal').classList.add('show');
+      document.getElementById('newUserName').focus();
+    }
+
+    function hideAddUserModal() {
+      document.getElementById('addUserModal').classList.remove('show');
+      document.getElementById('newUserName').value = '';
+    }
+
+    async function addUser() {
+      const name = document.getElementById('newUserName').value.trim();
+      if (!name) return;
+
+      try {
+        const response = await fetch('/api/gpt/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+
+        const data = await response.json();
+
+        if (data.ok) {
+          users = data.users;
+          currentUserId = name;
+          localStorage.setItem('gpt-current-user', currentUserId);
+
+          hideAddUserModal();
+          renderUsers();
+          loadConversations();
+          newChat();
+        } else {
+          alert(data.error || '사용자 추가 실패');
+        }
+      } catch (err) {
+        console.error('Failed to add user:', err);
+        alert('사용자 추가 중 오류가 발생했습니다.');
+      }
+    }
+
+    // Model Selection
+    function toggleModelPopup() {
+      const popup = document.getElementById('modelPopup');
+      popup.classList.toggle('show');
+    }
+
+    function selectModel(model) {
+      currentModel = model;
+
+      document.querySelectorAll('.model-option').forEach(el => {
+        el.classList.remove('selected');
+        if (el.dataset.model === model) {
+          el.classList.add('selected');
+        }
+      });
+
+      document.querySelectorAll('.model-option-check').forEach(el => el.style.display = 'none');
+      const checkEl = document.getElementById(`check-${model}`);
+      if (checkEl) checkEl.style.display = 'inline';
+
+      const badge = document.getElementById('currentModelBadge');
+      const name = document.getElementById('currentModelName');
+
+      if (model === 'auto') {
+        badge.className = 'model-badge auto';
+        badge.textContent = 'AUTO';
+        name.textContent = '자동 선택';
+      } else if (model === 'gpt-5.2') {
+        badge.className = 'model-badge gpt5';
+        badge.textContent = '5.2';
+        name.textContent = 'GPT-5.2';
+      } else if (model === 'gpt-4o') {
+        badge.className = 'model-badge gpt4';
+        badge.textContent = '4o';
+        name.textContent = 'GPT-4o';
+      } else if (model === 'gpt-4o-mini') {
+        badge.className = 'model-badge mini';
+        badge.textContent = 'mini';
+        name.textContent = 'GPT-4o-mini';
+      }
+
+      toggleModelPopup();
+    }
+
+    document.addEventListener('click', (e) => {
+      const popup = document.getElementById('modelPopup');
+      const dropdown = document.getElementById('modelDropdown');
+      if (!popup.contains(e.target) && !dropdown.contains(e.target)) {
+        popup.classList.remove('show');
+      }
+    });
+
+    // Sidebar
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('show');
+    }
+
+    function closeSidebar() {
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebarOverlay').classList.remove('show');
+    }
+
+    // Conversations
+    async function loadConversations() {
+      try {
+        const response = await fetch(`/api/gpt/conversations?user_id=${encodeURIComponent(currentUserId)}`);
+        const data = await response.json();
+
+        if (data.ok) {
+          renderChatHistory(data.conversations);
+        }
+      } catch (err) {
+        console.error('Failed to load conversations:', err);
+        renderChatHistory([]);
+      }
+    }
+
+    function renderChatHistory(conversations) {
+      const container = document.getElementById('chatHistory');
+      container.innerHTML = '';
+
+      if (conversations.length === 0) {
+        container.innerHTML = '<div style="padding: 20px; color: var(--text-muted); font-size: 14px; text-align: center;">대화 기록이 없습니다</div>';
+        return;
+      }
+
+      conversations.forEach(conv => {
+        const item = document.createElement('div');
+        item.className = `chat-history-item ${conv.id === currentConversationId ? 'active' : ''}`;
+        item.innerHTML = `
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${conv.title}</span>
+          <button class="delete-btn" onclick="deleteConversation('${conv.id}', event)">🗑</button>
+        `;
+        item.onclick = (e) => {
+          if (!e.target.classList.contains('delete-btn')) {
+            loadConversation(conv.id);
+          }
+        };
+        container.appendChild(item);
+      });
+    }
+
+    function newChat() {
+      currentConversationId = null;
+      messages = [];
+      currentImage = null;
+      removeImage();
+
+      document.getElementById('welcomeScreen').style.display = 'flex';
+      document.getElementById('messagesScroll').style.display = 'none';
+      document.getElementById('messagesScroll').innerHTML = '';
+
+      loadConversations();
+      closeSidebar();
+    }
+
+    async function loadConversation(id) {
+      try {
+        const response = await fetch(`/api/gpt/conversations/${id}?user_id=${encodeURIComponent(currentUserId)}`);
+        const data = await response.json();
+
+        if (data.ok) {
+          currentConversationId = id;
+          messages = data.conversation.messages || [];
+
+          document.getElementById('welcomeScreen').style.display = 'none';
+          document.getElementById('messagesScroll').style.display = 'block';
+
+          const container = document.getElementById('messagesScroll');
+          container.innerHTML = '';
+          messages.forEach(msg => {
+            appendMessage(msg.role, msg.content, msg.model, msg.has_image);
+          });
+
+          loadConversations();
+          closeSidebar();
+        }
+      } catch (err) {
+        console.error('Failed to load conversation:', err);
+      }
+    }
+
+    async function deleteConversation(id, event) {
+      event.stopPropagation();
+
+      if (!confirm('이 대화를 삭제하시겠습니까?')) return;
+
+      try {
+        await fetch(`/api/gpt/conversations/${id}?user_id=${encodeURIComponent(currentUserId)}`, {
+          method: 'DELETE'
+        });
+
+        if (id === currentConversationId) {
+          newChat();
+        } else {
+          loadConversations();
+        }
+      } catch (err) {
+        console.error('Failed to delete conversation:', err);
+      }
+    }
+
+    // Image handling
+    function handleImageSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        currentImage = e.target.result;
+        document.getElementById('previewImg').src = currentImage;
+        document.getElementById('imagePreview').classList.add('show');
+        autoResize(document.getElementById('messageInput'));
+      };
+      reader.readAsDataURL(file);
+
+      // Reset input
+      event.target.value = '';
+    }
+
+    function removeImage() {
+      currentImage = null;
+      document.getElementById('imagePreview').classList.remove('show');
+      document.getElementById('previewImg').src = '';
+    }
+
+    // Voice recording
+    function toggleVoiceRecording() {
+      if (!recognition) {
+        alert('이 브라우저는 음성 인식을 지원하지 않습니다.');
+        return;
+      }
+
+      if (isRecording) {
+        recognition.stop();
+        isRecording = false;
+        document.getElementById('voiceBtn').classList.remove('recording');
+        document.getElementById('voiceStatus').classList.remove('show');
+      } else {
+        finalTranscript = document.getElementById('messageInput').value;
+        recognition.start();
+        isRecording = true;
+        document.getElementById('voiceBtn').classList.add('recording');
+        document.getElementById('voiceStatus').classList.add('show');
+      }
+    }
+
+    // Input handling
+    function handleKeyDown(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }
+
+    function autoResize(textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px';
+
+      const sendBtn = document.getElementById('sendBtn');
+      sendBtn.disabled = (!textarea.value.trim() && !currentImage) || isLoading;
+    }
+
+    function setExample(text) {
+      const input = document.getElementById('messageInput');
+      input.value = text;
+      autoResize(input);
+      input.focus();
+    }
+
+    // Message handling
+    function appendMessage(role, content, model = null, hasImage = false) {
+      const container = document.getElementById('messagesScroll');
+
+      const messageDiv = document.createElement('div');
+      messageDiv.className = `message ${role}`;
+
+      // Simple markdown parsing
+      let formattedContent = content
+        .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+
+      messageDiv.innerHTML = `
+        <div class="message-bubble">
+          ${hasImage ? '<div style="font-size:12px;opacity:0.7;margin-bottom:6px;">📷 이미지 첨부됨</div>' : ''}
+          ${formattedContent}
+          ${model ? `<div class="message-meta"><span class="model-badge ${model === 'gpt-5.2' ? 'gpt5' : model === 'gpt-4o-mini' ? 'mini' : 'gpt4'}">${model}</span></div>` : ''}
+        </div>
+      `;
+
+      container.appendChild(messageDiv);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function showTypingIndicator() {
+      const container = document.getElementById('messagesScroll');
+      const indicator = document.createElement('div');
+      indicator.className = 'message assistant';
+      indicator.id = 'typingIndicator';
+      indicator.innerHTML = `
+        <div class="message-bubble">
+          <div class="typing-indicator">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
+      `;
+      container.appendChild(indicator);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+      const indicator = document.getElementById('typingIndicator');
+      if (indicator) indicator.remove();
+    }
+
+    // Send message
+    async function sendMessage() {
+      const input = document.getElementById('messageInput');
+      const content = input.value.trim();
+
+      if ((!content && !currentImage) || isLoading) return;
+
+      isLoading = true;
+      document.getElementById('sendBtn').disabled = true;
+
+      // Generate conversation ID if new
+      if (!currentConversationId) {
+        currentConversationId = Date.now().toString();
+      }
+
+      // Hide welcome, show messages
+      document.getElementById('welcomeScreen').style.display = 'none';
+      document.getElementById('messagesScroll').style.display = 'block';
+
+      // Add user message
+      const hasImage = !!currentImage;
+      messages.push({ role: 'user', content, has_image: hasImage });
+      appendMessage('user', content || '(이미지)', null, hasImage);
+
+      // Prepare request
+      const requestBody = {
+        message: content,
+        model: currentModel,
+        history: messages.slice(-10),
+        user_id: currentUserId,
+        conversation_id: currentConversationId,
+        has_image: hasImage
+      };
+
+      if (currentImage) {
+        requestBody.image = currentImage;
+      }
+
+      input.value = '';
+      autoResize(input);
+      removeImage();
+
+      showTypingIndicator();
+
+      try {
+        const response = await fetch('/api/gpt/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        const data = await response.json();
+
+        removeTypingIndicator();
+
+        if (data.ok) {
+          messages.push({
+            role: 'assistant',
+            content: data.response,
+            model: data.model_used
+          });
+          appendMessage('assistant', data.response, data.model_used);
+          loadConversations();
+        } else {
+          appendMessage('assistant', `오류가 발생했습니다: ${data.error}`);
+        }
+      } catch (err) {
+        removeTypingIndicator();
+        appendMessage('assistant', `네트워크 오류: ${err.message}`);
+      }
+
+      isLoading = false;
+      autoResize(input);
+      input.focus();
+    }
+  </script>
+</body>
+</html>
