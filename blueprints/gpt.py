@@ -11,8 +11,8 @@ GPT Chat API Blueprint
 import os
 from flask import Blueprint, request, jsonify, render_template
 
-# Blueprint 생성
-gpt_bp = Blueprint('gpt', __name__)
+# Blueprint 생성 (template_folder 지정 필요: 상위 디렉토리의 templates 폴더 사용)
+gpt_bp = Blueprint('gpt', __name__, template_folder='../templates')
 
 # ===== 의존성 주입 =====
 _db_connection_func = None
