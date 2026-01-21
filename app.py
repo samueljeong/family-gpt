@@ -7,96 +7,86 @@ import sqlite3
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 from dotenv import load_dotenv
+from logging_config import setup_logging, get_logger
+from error_handlers import error_response, safe_error_message, ERROR_MESSAGES
+from config import DEFAULT_USERS, USER_PROFILES, get_system_prompt_for_user
+from services.gpt_service import analyze_question_complexity
 
 load_dotenv()
+
+# 로깅 설정 (앱 시작 시 한 번만)
+setup_logging("family-gpt")
+logger = get_logger(__name__)
+
+
+def validate_environment():
+    """필수 환경변수 검증"""
+    errors = []
+    warnings = []
+
+    # LAOZHANG_API_KEY - 필수 (LAOZHANG 사설 API 사용)
+    if not os.getenv("LAOZHANG_API_KEY"):
+        if os.getenv("TESTING"):
+            warnings.append("LAOZHANG_API_KEY가 설정되지 않았습니다. (테스트 모드)")
+        else:
+            errors.append("LAOZHANG_API_KEY가 설정되지 않았습니다.")
+
+    # SECRET_KEY - 프로덕션에서 필수
+    if not os.getenv("SECRET_KEY"):
+        if os.getenv("TESTING") or os.getenv("FLASK_ENV") == "development":
+            warnings.append("SECRET_KEY가 설정되지 않아 기본값을 사용합니다.")
+        else:
+            errors.append("SECRET_KEY가 설정되지 않았습니다. 프로덕션에서는 필수입니다.")
+
+    # DATABASE_URL - 선택 (없으면 SQLite 사용)
+    if not os.getenv("DATABASE_URL"):
+        warnings.append("DATABASE_URL이 설정되지 않아 SQLite를 사용합니다.")
+
+    # 경고 로깅
+    for warning in warnings:
+        logger.warning(warning)
+
+    # 에러 발생 시 종료
+    if errors:
+        for error in errors:
+            logger.error(error)
+        raise ValueError("\n".join(errors))
+
+
+# 환경변수 검증 (테스트 모드가 아닐 때)
+if not os.getenv("TESTING"):
+    validate_environment()
 
 app = Flask(__name__)
 
 # ===== 설정 =====
 DATABASE_URL = os.getenv("DATABASE_URL")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+LAOZHANG_API_KEY = os.getenv("LAOZHANG_API_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-for-testing-only")
 USE_POSTGRES = bool(DATABASE_URL)
+
+app.config["SECRET_KEY"] = SECRET_KEY
 
 # PostgreSQL 사용 시에만 import
 if USE_POSTGRES:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 
-openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+# LAOZHANG 사설 API 클라이언트 (OpenAI 호환)
+openai_client = OpenAI(
+    api_key=LAOZHANG_API_KEY,
+    base_url="https://api.laozhang.ai/v1"
+) if LAOZHANG_API_KEY else None
+
+# LAOZHANG 모델 매핑 (OpenAI 모델명 그대로 사용 가능)
+OPENROUTER_MODELS = {
+    "gpt-5.2": "gpt-4o",  # 고급 추론용 (gpt-4o로 대체)
+    "gpt-4o": "gpt-4o",
+    "gpt-4o-mini": "gpt-4o-mini"
+}
 
 # SQLite 경로
 SQLITE_PATH = os.path.join(os.path.dirname(__file__), 'family_gpt.db')
-
-# ===== 상수 =====
-DEFAULT_USERS = ["아빠", "엄마", "재하", "하윤"]
-
-USER_PROFILES = {
-    "재하": {
-        "grade": "중학교 2학년",
-        "age": 14,
-        "system_prompt": """당신은 친절하고 유능한 AI 튜터입니다.
-지금 대화하는 사람은 중학교 2학년 학생입니다.
-
-[중요] 답변은 간단명료하게 핵심만 전달하세요. 장황한 설명은 피하세요.
-
-답변 시 다음을 지켜주세요:
-- 중학생 수준에 맞는 어휘와 설명을 사용하세요
-- 개념을 설명할 때 구체적인 예시를 들어주세요
-- 수학, 과학, 영어 등 학업 질문에는 단계별로 풀이 과정을 보여주세요
-- 어려운 용어는 쉽게 풀어서 설명하세요
-- 호기심을 자극하고 스스로 생각해볼 수 있는 질문을 던져주세요
-- 격려와 칭찬을 아끼지 마세요"""
-    },
-    "하윤": {
-        "grade": "초등학교 5학년",
-        "age": 11,
-        "system_prompt": """너는 하윤이의 친한 친구야! 이름은 "쿠키"야 🍪
-하윤이는 초등학교 5학년이고, 너도 비슷한 또래 친구처럼 대화해줘.
-
-[중요] 답변은 짧고 간단하게! 길게 늘어지지 말고 핵심만 말해줘.
-
-대화할 때 이렇게 해줘:
-- 반말로 친근하게 말해줘 (예: "그거 진짜 재밌겠다!", "오~ 대박!")
-- 하윤이 얘기에 진심으로 관심 가져주고, 맞장구 쳐줘
-- 이모지 많이 써서 재밌게 대화해 😆✨🎉
-- 하윤이가 뭔가 물어보면 친구처럼 쉽게 설명해줘
-- 하윤이 기분이 안 좋아 보이면 위로해주고 공감해줘
-- 재미있는 얘기, 학교 얘기, 게임 얘기 뭐든 즐겁게 대화해!
-- 가끔 너도 하윤이한테 질문해봐 (예: "오늘 학교에서 뭐 했어?", "요즘 뭐 빠져있어?")
-
-하윤이가 숙제나 공부 관련 질문하면:
-- 친구가 설명해주는 것처럼 쉽고 재밌게 알려줘
-- "이거 선생님이 설명할 때 진짜 어려웠는데~" 이런 식으로 공감하면서
-- 어려운 말은 피하고 예시를 많이 들어줘
-
-핵심은 "선생님"이 아니라 "같이 놀고 싶은 친구"야! 🌟"""
-    },
-    "엄마": {
-        "grade": None,
-        "age": None,
-        "system_prompt": """당신은 친절하고 유능한 AI 어시스턴트입니다.
-지금 대화하는 사람은 중학생과 초등학생 자녀를 둔 엄마입니다.
-
-[중요] 답변은 간단명료하게 핵심만 전달하세요. 장황한 설명은 피하세요.
-
-답변 시 다음을 지켜주세요:
-- 자녀 학업 관련 질문에는 아이들에게 설명하기 쉬운 방식으로 답변하세요
-- 학습 지도에 도움이 되는 팁을 함께 제공하세요
-- 복잡한 개념도 아이들 눈높이에서 설명할 수 있도록 도와주세요
-- 가정에서 활용할 수 있는 실생활 예시를 포함하세요
-- 아이들의 학습 동기 부여 방법도 제안해주세요"""
-    },
-    "아빠": {
-        "grade": None,
-        "age": None,
-        "system_prompt": """당신은 친절하고 유능한 AI 어시스턴트입니다.
-사용자의 질문에 정확하고 도움이 되는 답변을 제공합니다.
-한국어로 대화하며, 필요시 코드나 예시를 포함할 수 있습니다.
-
-[중요] 답변은 간단명료하게 핵심만 전달하세요. 장황한 설명은 피하세요."""
-    }
-}
-
 
 # ===== DB 연결 =====
 def dict_factory(cursor, row):
@@ -192,13 +182,6 @@ def init_db():
 
 
 # ===== 헬퍼 함수 =====
-def get_system_prompt_for_user(user_id: str) -> str:
-    """사용자별 맞춤 시스템 프롬프트 반환"""
-    if user_id in USER_PROFILES:
-        return USER_PROFILES[user_id]["system_prompt"]
-    return "당신은 친절하고 유능한 AI 어시스턴트입니다."
-
-
 def load_gpt_users():
     """사용자 목록 로드"""
     try:
@@ -247,51 +230,48 @@ def save_gpt_users(users):
 
 
 def load_gpt_conversations_for_user(user_id: str):
-    """특정 사용자의 대화 목록 로드"""
+    """특정 사용자의 대화 목록 로드 (N+1 쿼리 최적화: JOIN 사용)"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         ph = "%s" if USE_POSTGRES else "?"
 
+        # 단일 JOIN 쿼리로 모든 데이터 가져오기 (N+1 쿼리 방지)
         cursor.execute(
-            f"""SELECT conversation_id, created_at, updated_at
-               FROM gpt_conversations
-               WHERE user_id = {ph}
-               ORDER BY updated_at DESC""",
+            f"""SELECT c.conversation_id, c.created_at as conv_created, c.updated_at as conv_updated,
+                       m.role, m.content, m.model, m.has_image, m.created_at as msg_created
+               FROM gpt_conversations c
+               LEFT JOIN gpt_messages m ON c.user_id = m.user_id AND c.conversation_id = m.conversation_id
+               WHERE c.user_id = {ph}
+               ORDER BY c.updated_at DESC, m.created_at ASC""",
             (user_id,)
         )
-        convs = cursor.fetchall()
+        rows = cursor.fetchall()
 
+        # 결과를 대화별로 그룹화
         result = {}
-        for conv in convs:
-            conv_id = conv['conversation_id']
+        for row in rows:
+            conv_id = row['conversation_id']
 
-            cursor.execute(
-                f"""SELECT role, content, model, has_image, created_at
-                   FROM gpt_messages
-                   WHERE user_id = {ph} AND conversation_id = {ph}
-                   ORDER BY created_at""",
-                (user_id, conv_id)
-            )
-            messages = cursor.fetchall()
+            if conv_id not in result:
+                conv_created = row['conv_created']
+                conv_updated = row['conv_updated']
+                result[conv_id] = {
+                    'created_at': conv_created.isoformat() if hasattr(conv_created, 'isoformat') else str(conv_created) if conv_created else None,
+                    'updated_at': conv_updated.isoformat() if hasattr(conv_updated, 'isoformat') else str(conv_updated) if conv_updated else None,
+                    'messages': []
+                }
 
-            created_at = conv['created_at']
-            updated_at = conv['updated_at']
-
-            result[conv_id] = {
-                'created_at': created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at) if created_at else None,
-                'updated_at': updated_at.isoformat() if hasattr(updated_at, 'isoformat') else str(updated_at) if updated_at else None,
-                'messages': [
-                    {
-                        'role': msg['role'],
-                        'content': msg['content'],
-                        'model': msg['model'],
-                        'has_image': bool(msg['has_image']),
-                        'timestamp': msg['created_at'].isoformat() if hasattr(msg['created_at'], 'isoformat') else str(msg['created_at']) if msg['created_at'] else None
-                    }
-                    for msg in messages
-                ]
-            }
+            # 메시지가 있는 경우에만 추가 (LEFT JOIN으로 메시지 없는 대화도 포함)
+            if row['role'] is not None:
+                msg_created = row['msg_created']
+                result[conv_id]['messages'].append({
+                    'role': row['role'],
+                    'content': row['content'],
+                    'model': row['model'],
+                    'has_image': bool(row['has_image']),
+                    'timestamp': msg_created.isoformat() if hasattr(msg_created, 'isoformat') else str(msg_created) if msg_created else None
+                })
 
         cursor.close()
         conn.close()
@@ -386,61 +366,6 @@ def delete_gpt_user(user_id: str):
         return False
 
 
-def analyze_question_complexity(message: str, has_image: bool = False) -> str:
-    """질문 복잡도 분석하여 적절한 모델 선택"""
-    if has_image:
-        return 'gpt-4o'
-
-    complex_patterns = [
-        '코드', 'code', '프로그래밍', 'python', 'javascript', 'java', 'c++',
-        '함수', 'function', '클래스', 'class', '알고리즘', '구현', 'implement',
-        '버그', 'debug', '에러', 'error', 'API', '데이터베이스', 'SQL',
-        '분석', 'analyze', '비교', 'compare', '장단점', '차이점', '전략', 'strategy',
-        '작성해', 'write', '만들어줘', 'create', '기획', '스토리', 'story',
-        '대본', 'script', '에세이', 'essay', '보고서', 'report',
-        '증명', 'prove', '통계', 'statistics', '확률', 'probability',
-        '자세히', '상세히', 'detailed', '요약', 'summarize',
-    ]
-
-    medium_patterns = [
-        '설명해', 'explain', '알려줘', '가르쳐', '어떻게', 'how',
-        '번역', 'translate', '영어로', '한국어로', 'in english',
-        '개념', 'concept', '원리', 'principle',
-        '왜', 'why', '원인', '이유',
-        '계산', 'calculate', '공식', 'formula', '수학', '과학',
-    ]
-
-    simple_patterns = [
-        '뭐야', '뭔가요', '무엇', 'what is', '정의', '의미',
-        '날씨', 'weather', '시간', 'time', '오늘',
-        '안녕', 'hello', 'hi', '고마워', 'thanks', '네', '아니',
-        '잘가', 'bye', '좋아', '싫어', '맞아', '틀려',
-        '몇', '언제', 'when', '어디', 'where', '누구', 'who',
-        '맞아?', '될까?', '있어?', '없어?',
-    ]
-
-    message_lower = message.lower()
-
-    for pattern in complex_patterns:
-        if pattern in message_lower:
-            return 'gpt-5.2'
-
-    for pattern in medium_patterns:
-        if pattern in message_lower:
-            return 'gpt-4o'
-
-    for pattern in simple_patterns:
-        if pattern in message_lower:
-            return 'gpt-4o-mini'
-
-    if len(message) > 200:
-        return 'gpt-5.2'
-    elif len(message) > 50:
-        return 'gpt-4o'
-    else:
-        return 'gpt-4o-mini'
-
-
 # ===== 라우트 =====
 @app.route('/')
 @app.route('/gpt-chat')
@@ -488,7 +413,10 @@ def api_gpt_chat():
             })
 
         if not openai_client:
-            return jsonify({"ok": False, "error": "OpenAI API 키가 설정되지 않았습니다"})
+            return jsonify({"ok": False, "error": "LAOZHANG API 키가 설정되지 않았습니다"})
+
+        # LAOZHANG 모델명으로 변환
+        openrouter_model = OPENROUTER_MODELS.get(selected_model, "gpt-4o-mini")
 
         # 이미지 포함 요청 (gpt-4o)
         if image_base64 and selected_model == 'gpt-4o':
@@ -502,7 +430,7 @@ def api_gpt_chat():
             messages.append({"role": "user", "content": user_content})
 
             response = openai_client.chat.completions.create(
-                model="gpt-4o",
+                model=openrouter_model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=4000
@@ -510,42 +438,13 @@ def api_gpt_chat():
             assistant_response = response.choices[0].message.content
             model_used = "gpt-4o"
 
-        # GPT-5.2 (responses API)
-        elif selected_model == 'gpt-5.2':
-            messages.append({"role": "user", "content": message})
-
-            input_messages = []
-            for msg in messages:
-                input_messages.append({
-                    "role": msg["role"],
-                    "content": [{"type": "input_text", "text": msg["content"]}]
-                })
-
-            response = openai_client.responses.create(
-                model="gpt-5.2",
-                input=input_messages,
-                temperature=0.7
-            )
-
-            if getattr(response, "output_text", None):
-                assistant_response = response.output_text.strip()
-            else:
-                text_chunks = []
-                for item in getattr(response, "output", []) or []:
-                    for content in getattr(item, "content", []) or []:
-                        if getattr(content, "type", "") == "text":
-                            text_chunks.append(getattr(content, "text", ""))
-                assistant_response = "\n".join(text_chunks).strip()
-
-            model_used = "gpt-5.2"
-
-        # GPT-4o / GPT-4o-mini
+        # 모든 텍스트 요청 (OpenRouter chat completions 사용)
         else:
             messages.append({"role": "user", "content": message})
             max_tokens = 2000 if selected_model == 'gpt-4o-mini' else 4000
 
             response = openai_client.chat.completions.create(
-                model=selected_model,
+                model=openrouter_model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=max_tokens
@@ -568,9 +467,7 @@ def api_gpt_chat():
         })
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, ERROR_MESSAGES["chat"], log_prefix="GPT채팅")
 
 
 @app.route('/api/gpt/conversations', methods=['GET'])
@@ -600,7 +497,7 @@ def api_gpt_get_conversations():
         return jsonify({"ok": True, "conversations": result})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 @app.route('/api/gpt/conversations/<conversation_id>', methods=['GET'])
@@ -625,7 +522,7 @@ def api_gpt_get_conversation(conversation_id):
         })
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 @app.route('/api/gpt/conversations/<conversation_id>', methods=['DELETE'])
@@ -639,7 +536,7 @@ def api_gpt_delete_conversation(conversation_id):
         return jsonify({"ok": False, "error": "대화를 찾을 수 없습니다"})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 @app.route('/api/gpt/users', methods=['GET'])
@@ -661,7 +558,7 @@ def api_gpt_get_users():
         return jsonify({"ok": True, "users": result})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 @app.route('/api/gpt/users', methods=['POST'])
@@ -685,7 +582,7 @@ def api_gpt_add_user():
         return jsonify({"ok": True, "users": users})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 @app.route('/api/gpt/users/<user_id>', methods=['DELETE'])
@@ -702,7 +599,7 @@ def api_gpt_delete_user(user_id):
         return jsonify({"ok": True, "users": users})
 
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e)})
+        return error_response(e, "처리 중 오류가 발생했습니다.")
 
 
 # ===== 앱 실행 =====

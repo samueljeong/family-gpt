@@ -4,6 +4,10 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>GPT Chat</title>
+  <!-- KaTeX for math rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
   <style>
     :root {
       --bg-main: #f5f5f7;
@@ -458,6 +462,14 @@
       background: none;
       padding: 0;
     }
+
+    /* KaTeX math styling */
+    .message-bubble .katex { font-size: 1.1em; }
+    .message-bubble .katex-display {
+      margin: 12px 0;
+      overflow-x: auto;
+    }
+    .message.user .message-bubble .katex { color: var(--text-user); }
 
     .message-meta {
       font-size: 11px;
@@ -1043,23 +1055,8 @@
             <span class="welcome-user" id="welcomeUser">사용자</span>님, 안녕하세요!<br>
             무엇이든 물어보세요
           </p>
-          <div class="welcome-examples">
-            <div class="example-card" onclick="setExample('Python으로 간단한 웹 스크래퍼 만들어줘')">
-              <div class="example-title">💻 코드 작성</div>
-              <div class="example-desc">Python 웹 스크래퍼</div>
-            </div>
-            <div class="example-card" onclick="setExample('마케팅에서 AIDA 모델이 뭐야?')">
-              <div class="example-title">📚 개념 설명</div>
-              <div class="example-desc">마케팅 AIDA 모델</div>
-            </div>
-            <div class="example-card" onclick="setExample('오늘 날씨가 정말 좋네요 영어로 번역해줘')">
-              <div class="example-title">🌐 번역</div>
-              <div class="example-desc">한영 번역</div>
-            </div>
-            <div class="example-card" onclick="setExample('AI가 미래 일자리에 미치는 영향 분석해줘')">
-              <div class="example-title">🔍 심층 분석</div>
-              <div class="example-desc">AI와 일자리</div>
-            </div>
+          <div class="welcome-examples" id="welcomeExamples">
+            <!-- 사용자별 예시가 동적으로 삽입됨 -->
           </div>
         </div>
 
@@ -1146,6 +1143,37 @@
     let recognition = null;
     let isRecording = false;
     let finalTranscript = '';
+
+    // 사용자별 예시 데이터
+    const userExamples = {
+      '재하': [
+        { icon: '📐', title: '수학 문제', desc: '방정식 풀이', prompt: '2x + 5 = 11 풀어줘' },
+        { icon: '📖', title: '영어 질문', desc: '문법 설명', prompt: '현재완료 시제 설명해줘' },
+        { icon: '🔬', title: '과학 개념', desc: '물리/화학', prompt: '뉴턴의 운동법칙이 뭐야?' },
+        { icon: '📝', title: '독후감 도움', desc: '글쓰기', prompt: '독후감 어떻게 쓰는지 알려줘' }
+      ],
+      '하윤': [
+        { icon: '💬', title: '수다 떨기', desc: '오늘 있었던 일', prompt: '하이야 오늘 학교에서 재밌는 일 있었어!' },
+        { icon: '📚', title: '숙제 도움', desc: '모르는 거 질문', prompt: '분수 더하기 어떻게 해?' },
+        { icon: '🎮', title: '게임 얘기', desc: '좋아하는 게임', prompt: '요즘 재밌는 게임 뭐 있어?' },
+        { icon: '🌟', title: '재밌는 거', desc: '퀴즈/수수께끼', prompt: '재밌는 수수께끼 내줘!' }
+      ],
+      '엄마': [
+        { icon: '👨‍👩‍👧‍👦', title: '자녀 학습', desc: '학습 지도 팁', prompt: '재하 수학 분수 어떻게 가르쳐줄까?' },
+        { icon: '🍳', title: '요리 레시피', desc: '간단한 요리', prompt: '아이들 간식 뭐가 좋을까?' },
+        { icon: '📅', title: '일정 관리', desc: '계획 세우기', prompt: '이번 주 가족 일정 어떻게 짤까?' },
+        { icon: '💡', title: '생활 정보', desc: '유용한 팁', prompt: '집안일 효율적으로 하는 방법' }
+      ],
+      '아빠': [
+        { icon: '💻', title: '코드 작성', desc: 'Python 웹 스크래퍼', prompt: 'Python으로 간단한 웹 스크래퍼 만들어줘' },
+        { icon: '📚', title: '개념 설명', desc: '마케팅 AIDA 모델', prompt: '마케팅에서 AIDA 모델이 뭐야?' },
+        { icon: '🌐', title: '번역', desc: '한영 번역', prompt: '오늘 날씨가 정말 좋네요 영어로 번역해줘' },
+        { icon: '🔍', title: '심층 분석', desc: 'AI와 일자리', prompt: 'AI가 미래 일자리에 미치는 영향 분석해줘' }
+      ]
+    };
+
+    // 기본 예시 (등록되지 않은 사용자용)
+    const defaultExamples = userExamples['아빠'];
 
     // Initialize Speech Recognition
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
@@ -1249,6 +1277,21 @@
       // Update welcome message
       const welcomeUser = document.getElementById('welcomeUser');
       welcomeUser.textContent = currentUserId || '사용자';
+
+      // Update examples based on user
+      renderExamples();
+    }
+
+    function renderExamples() {
+      const container = document.getElementById('welcomeExamples');
+      const examples = userExamples[currentUserId] || defaultExamples;
+
+      container.innerHTML = examples.map(ex => `
+        <div class="example-card" onclick="setExample('${ex.prompt.replace(/'/g, "\\'")}')">
+          <div class="example-title">${ex.icon} ${ex.title}</div>
+          <div class="example-desc">${ex.desc}</div>
+        </div>
+      `).join('');
     }
 
     function switchUser() {
@@ -1476,6 +1519,13 @@
       const file = event.target.files[0];
       if (!file) return;
 
+      // 5MB 크기 제한
+      if (file.size > 5 * 1024 * 1024) {
+        alert('이미지가 너무 커요! 5MB 이하로 선택해주세요.');
+        event.target.value = '';
+        return;
+      }
+
       const reader = new FileReader();
       reader.onload = (e) => {
         currentImage = e.target.result;
@@ -1562,6 +1612,18 @@
       `;
 
       container.appendChild(messageDiv);
+
+      // KaTeX 수학식 렌더링
+      if (typeof renderMathInElement !== 'undefined') {
+        renderMathInElement(messageDiv, {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false}
+          ],
+          throwOnError: false
+        });
+      }
+
       container.scrollTop = container.scrollHeight;
     }
 
@@ -1654,7 +1716,8 @@
         }
       } catch (err) {
         removeTypingIndicator();
-        appendMessage('assistant', `네트워크 오류: ${err.message}`);
+        console.error('Network error:', err);
+        appendMessage('assistant', '인터넷 연결을 확인해주세요. 다시 시도하려면 메시지를 다시 보내세요.');
       }
 
       isLoading = false;
