@@ -67,6 +67,7 @@ app = Flask(__name__)
 
 # ===== 설정 =====
 DATABASE_URL = os.getenv("DATABASE_URL")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 LAOZHANG_API_KEY = os.getenv("LAOZHANG_API_KEY")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-for-testing-only")
 USE_POSTGRES = bool(DATABASE_URL)
@@ -78,17 +79,28 @@ if USE_POSTGRES:
     import psycopg2
     from psycopg2.extras import RealDictCursor
 
-# LAOZHANG 사설 API 클라이언트 (OpenAI 호환)
+# Gemini 클라이언트 (Google AI 직접 연결 - 무료 티어)
+gemini_client = OpenAI(
+    api_key=GOOGLE_API_KEY,
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+) if GOOGLE_API_KEY else None
+
+# LAOZHANG 클라이언트 (폴백)
 openai_client = OpenAI(
     api_key=LAOZHANG_API_KEY,
     base_url="https://api.laozhang.ai/v1"
 ) if LAOZHANG_API_KEY else None
 
-# LAOZHANG 모델 매핑 (OpenAI 모델명 그대로 사용 가능)
-OPENROUTER_MODELS = {
-    "gpt-5.2": "gpt-4o",  # 고급 추론용 (gpt-4o로 대체)
-    "gpt-4o": "gpt-4o",
-    "gpt-4o-mini": "gpt-4o-mini"
+# 모델 설정 (Gemini 직접 모델명 사용)
+MODEL_CONFIG = {
+    "gemini-2.5-pro": {"max_tokens": 4000},
+    "gemini-2.5-flash": {"max_tokens": 4000},
+}
+
+# LAOZHANG 폴백용 모델 매핑 (Gemini → GPT)
+FALLBACK_MODELS = {
+    "gemini-2.5-pro": "gpt-4o",
+    "gemini-2.5-flash": "gpt-4o-mini",
 }
 
 # SQLite 경로
