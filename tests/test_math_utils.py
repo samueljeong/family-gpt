@@ -22,15 +22,15 @@ class TestProcessMathResponse:
 
     def test_display_delimiter(self):
         r"""디스플레이 구분자 \[ \] 제거"""
-        assert process_math_response(r'\[ \frac{3}{4} \]') == ' 3분의 4 '  # noqa: W605
+        assert process_math_response(r'\[ \frac{3}{4} \]') == ' 4분의 3 '
 
     def test_dollar_inline(self):
         """$ 인라인 구분자"""
-        assert process_math_response(r'$ \frac{1}{3} $') == ' 1분의 3 '  # noqa: W605
+        assert process_math_response(r'$ \frac{1}{3} $') == ' 3분의 1 '
 
     def test_double_dollar(self):
         """$$ 디스플레이 구분자"""
-        assert process_math_response(r'$$ \frac{2}{5} $$') == ' 2분의 5 '
+        assert process_math_response(r'$$ \frac{2}{5} $$') == ' 5분의 2 '
 
     def test_fraction_in_sentence(self):
         """문장 내 분수 변환"""
