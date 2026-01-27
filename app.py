@@ -26,12 +26,16 @@ def validate_environment():
     errors = []
     warnings = []
 
-    # LAOZHANG_API_KEY - 필수 (LAOZHANG 사설 API 사용)
+    # GOOGLE_API_KEY - 1차 (Gemini 직접 연결)
+    if not os.getenv("GOOGLE_API_KEY"):
+        warnings.append("GOOGLE_API_KEY가 설정되지 않았습니다. LAOZHANG 폴백을 사용합니다.")
+
+    # LAOZHANG_API_KEY - 폴백
     if not os.getenv("LAOZHANG_API_KEY"):
         if os.getenv("TESTING"):
             warnings.append("LAOZHANG_API_KEY가 설정되지 않았습니다. (테스트 모드)")
-        else:
-            errors.append("LAOZHANG_API_KEY가 설정되지 않았습니다.")
+        elif not os.getenv("GOOGLE_API_KEY"):
+            errors.append("GOOGLE_API_KEY와 LAOZHANG_API_KEY 모두 설정되지 않았습니다. 최소 하나가 필요합니다.")
 
     # SECRET_KEY - 프로덕션에서 필수
     if not os.getenv("SECRET_KEY"):
