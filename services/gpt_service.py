@@ -13,12 +13,12 @@ def analyze_question_complexity(message: str, has_image: bool = False) -> str:
         has_image: 이미지 포함 여부
 
     Returns:
-        선택된 모델명 (gpt-5.2, gpt-4o, gpt-4o-mini)
+        선택된 모델명 (gemini-2.5-pro, gemini-2.5-flash)
     """
     if has_image:
-        return 'gpt-4o'
+        return 'gemini-2.5-flash'
 
-    # 복잡한 질문 패턴 (gpt-5.2 사용)
+    # 복잡한 질문 패턴 (gemini-2.5-pro 사용)
     complex_patterns = [
         '코드', 'code', '프로그래밍', 'python', 'javascript', 'java', 'c++',
         '함수', 'function', '클래스', 'class', '알고리즘', '구현', 'implement',
@@ -33,7 +33,7 @@ def analyze_question_complexity(message: str, has_image: bool = False) -> str:
         '그래프', 'graph', '좌표', '기하', '삼각함수',
     ]
 
-    # 중간 수준 패턴 (gpt-4o 사용)
+    # 중간 수준 패턴 (gemini-2.5-flash 사용)
     medium_patterns = [
         '설명해', 'explain', '알려줘', '가르쳐', '어떻게', 'how',
         '번역', 'translate', '영어로', '한국어로', 'in english',
@@ -45,7 +45,7 @@ def analyze_question_complexity(message: str, has_image: bool = False) -> str:
         '넓이', '부피', '각도', '둘레', '단위', '약분', '통분',
     ]
 
-    # 간단한 질문 패턴 (gpt-4o-mini 사용)
+    # 간단한 질문 패턴 (gemini-2.5-flash 사용)
     simple_patterns = [
         '뭐야', '뭔가요', '무엇', 'what is', '정의', '의미',
         '날씨', 'weather', '시간', 'time', '오늘',
@@ -60,20 +60,20 @@ def analyze_question_complexity(message: str, has_image: bool = False) -> str:
     # 패턴 매칭
     for pattern in complex_patterns:
         if pattern in message_lower:
-            return 'gpt-5.2'
+            return 'gemini-2.5-pro'
 
     for pattern in medium_patterns:
         if pattern in message_lower:
-            return 'gpt-4o'
+            return 'gemini-2.5-flash'
 
     for pattern in simple_patterns:
         if pattern in message_lower:
-            return 'gpt-4o-mini'
+            return 'gemini-2.5-flash'
 
     # 길이 기반 기본 선택
     if len(message) > 200:
-        return 'gpt-5.2'
+        return 'gemini-2.5-pro'
     elif len(message) > 50:
-        return 'gpt-4o'
+        return 'gemini-2.5-flash'
     else:
-        return 'gpt-4o-mini'
+        return 'gemini-2.5-flash'
