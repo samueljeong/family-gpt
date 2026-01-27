@@ -1590,7 +1590,7 @@
         <div class="message-bubble">
           ${hasImage ? '<div style="font-size:12px;opacity:0.7;margin-bottom:6px;">📷 이미지 첨부됨</div>' : ''}
           ${formattedContent}
-          ${model ? `<div class="message-meta"><span class="model-badge ${model === 'gpt-5.2' ? 'gpt5' : model === 'gpt-4o-mini' ? 'mini' : 'gpt4'}">${model}</span></div>` : ''}
+          ${model ? `<div class="message-meta"><span class="model-badge ${model.includes('pro') ? 'pro' : 'flash'}">${model}</span></div>` : ''}
         </div>
       `;
 
