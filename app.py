@@ -261,6 +261,7 @@ def api_gpt_chat():
                 max_tokens=4000
             )
             assistant_response = response.choices[0].message.content
+            assistant_response = process_math_response(assistant_response)
             model_used = "gpt-4o"
 
         # 모든 텍스트 요청 (OpenRouter chat completions 사용)
@@ -275,6 +276,7 @@ def api_gpt_chat():
                 max_tokens=max_tokens
             )
             assistant_response = response.choices[0].message.content
+            assistant_response = process_math_response(assistant_response)
             model_used = selected_model
 
         # 대화 저장
