@@ -285,7 +285,7 @@ def api_gpt_chat():
                 save_gpt_message(user_id, conversation_id, 'user', message, None, bool(image_base64))
                 save_gpt_message(user_id, conversation_id, 'assistant', assistant_response, model_used, False)
             except Exception as e:
-                print(f"[GPT] 대화 저장 오류: {e}")
+                logger.error(f"대화 저장 오류: {e}")
 
         return jsonify({
             "ok": True,
