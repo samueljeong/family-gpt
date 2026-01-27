@@ -1365,18 +1365,14 @@
         badge.className = 'model-badge auto';
         badge.textContent = 'AUTO';
         name.textContent = '자동 선택';
-      } else if (model === 'gpt-5.2') {
-        badge.className = 'model-badge gpt5';
-        badge.textContent = '5.2';
-        name.textContent = 'GPT-5.2';
-      } else if (model === 'gpt-4o') {
-        badge.className = 'model-badge gpt4';
-        badge.textContent = '4o';
-        name.textContent = 'GPT-4o';
-      } else if (model === 'gpt-4o-mini') {
-        badge.className = 'model-badge mini';
-        badge.textContent = 'mini';
-        name.textContent = 'GPT-4o-mini';
+      } else if (model === 'gemini-2.5-pro') {
+        badge.className = 'model-badge pro';
+        badge.textContent = 'Pro';
+        name.textContent = 'Gemini 2.5 Pro';
+      } else if (model === 'gemini-2.5-flash') {
+        badge.className = 'model-badge flash';
+        badge.textContent = 'Flash';
+        name.textContent = 'Gemini 2.5 Flash';
       }
 
       toggleModelPopup();
