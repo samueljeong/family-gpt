@@ -178,9 +178,9 @@ def init_db():
         conn.commit()
         cursor.close()
         conn.close()
-        print("[DB] 테이블 초기화 완료")
+        logger.info("DB 테이블 초기화 완료")
     except Exception as e:
-        print(f"[DB] 초기화 실패: {e}")
+        logger.error(f"DB 초기화 실패: {e}")
 
 
 # ===== DB 헬퍼 초기화 =====
