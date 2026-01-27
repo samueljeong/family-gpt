@@ -226,7 +226,7 @@ def api_gpt_chat():
         else:
             selected_model = model_preference
 
-        print(f"[GPT] 모델: {selected_model}, 사용자: {user_id}")
+        logger.info(f"모델: {selected_model}, 사용자: {user_id}")
 
         system_prompt = get_system_prompt_for_user(user_id)
         messages = [{"role": "system", "content": system_prompt}]
