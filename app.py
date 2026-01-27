@@ -253,14 +253,11 @@ def api_gpt_chat():
                 "content": h.get('content', '')
             })
 
-        if not openai_client:
-            return jsonify({"ok": False, "error": "LAOZHANG API 키가 설정되지 않았습니다"})
+        if not gemini_client and not openai_client:
+            return jsonify({"ok": False, "error": "API 키가 설정되지 않았습니다 (Gemini 또는 LAOZHANG)"})
 
-        # LAOZHANG 모델명으로 변환
-        openrouter_model = OPENROUTER_MODELS.get(selected_model, "gpt-4o-mini")
-
-        # 이미지 포함 요청 (gpt-4o)
-        if image_base64 and selected_model == 'gpt-4o':
+        # 이미지 포함 요청
+        if image_base64:
             user_content = [{"type": "text", "text": message or "이 이미지에 대해 설명해주세요."}]
 
             if image_base64.startswith('data:'):
@@ -269,31 +266,43 @@ def api_gpt_chat():
                 user_content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
 
             messages.append({"role": "user", "content": user_content})
-
-            response = openai_client.chat.completions.create(
-                model=openrouter_model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=4000
-            )
-            assistant_response = response.choices[0].message.content
-            assistant_response = process_math_response(assistant_response)
-            model_used = "gpt-4o"
-
-        # 모든 텍스트 요청 (OpenRouter chat completions 사용)
         else:
             messages.append({"role": "user", "content": message})
-            max_tokens = 2000 if selected_model == 'gpt-4o-mini' else 4000
 
+        max_tokens = MODEL_CONFIG.get(selected_model, {}).get("max_tokens", 4000)
+
+        # 1차: Gemini 시도
+        assistant_response = None
+        model_used = selected_model
+
+        if gemini_client:
+            try:
+                response = gemini_client.chat.completions.create(
+                    model=selected_model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=max_tokens
+                )
+                assistant_response = response.choices[0].message.content
+            except Exception as e:
+                logger.warning(f"Gemini API 실패, LAOZHANG 폴백: {e}")
+
+        # 2차: LAOZHANG 폴백
+        if assistant_response is None and openai_client:
+            fallback_model = FALLBACK_MODELS.get(selected_model, "gpt-4o-mini")
             response = openai_client.chat.completions.create(
-                model=openrouter_model,
+                model=fallback_model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=max_tokens
             )
             assistant_response = response.choices[0].message.content
-            assistant_response = process_math_response(assistant_response)
-            model_used = selected_model
+            model_used = f"{selected_model} (fallback)"
+
+        if assistant_response is None:
+            return jsonify({"ok": False, "error": "모든 API 호출이 실패했습니다"})
+
+        assistant_response = process_math_response(assistant_response)
 
         # 대화 저장
         if conversation_id:
