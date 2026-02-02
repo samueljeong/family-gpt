@@ -27,7 +27,7 @@ MATH_GUIDE_STANDARD = """
 """
 
 # 어린이용 수학 표기 가이드 (쉬운 설명)
-MATH_GUIDE_KIDS = """
+MATH_GUIDE_KIDS_TEMP = """
 수학 문제 풀 때:
 - 곱하기는 ×, 나누기는 ÷ 써줘
 - 나누기를 분수처럼 위아래로 쓰지 말고 ÷ 기호로 써줘
@@ -37,6 +37,7 @@ MATH_GUIDE_KIDS = """
 - 분수나 루트는 $ 기호로 감싸줘
 - 예: $\\\\frac{1}{2}$ (2분의 1), $\\\\sqrt{4}$ (루트 4)
 """
+MATH_GUIDE_KIDS = ""  # 테스트용 임시 빈값
 
 # 사용자별 프로필 설정
 USER_PROFILES = {
